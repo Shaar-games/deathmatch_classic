@@ -1,0 +1,8 @@
+"deathmatch_classic"
+{
+	"base"		"base"
+	"title"		"Deathmatch Classic"
+	"maps"		"^dm_"
+	"menusystem"	"1"
+
+}
