@@ -1,7 +1,7 @@
 
 DEATHMATCH = {}
 
-DEATHMATCH.CurrentWeaponConfig =  CreateConVar( "dm_weaponconfig", "Half-Life", FCVAR_ARCHIVE , "" )
+DEATHMATCH.CurrentWeaponConfig =  CreateConVar( "dm_weaponconfig", "Half-Life 2", FCVAR_ARCHIVE , "" )
 
 DEATHMATCH.Limit = false
 
@@ -121,9 +121,9 @@ net.Receive("dm_weaponconfig",function( len , ply )
       if weapons.GetStored( tbl[i] ) then
          tosave[i] = tbl[i]
       else
-         print( tbl[i] .. " is not a valid model")
-         ply:PrintMessage( 3 ,  tbl[i] .. " is not a valid model" )
-         tosave[i] = HL[i]
+         print( tbl[i] .. " is not a valid weapon")
+         ply:PrintMessage( 3 ,  tbl[i] .. " is not a valid weapon" )
+         tosave[i] = HL2[i]
       end
    end
 
@@ -320,7 +320,7 @@ concommand.Add("dm_restart",function ()
 end)
 
 hook.Add( "PlayerDeath", "dm_clasic_PlayerDeath" , function( victim, inflictor, attacker )
-	if attacker:Frags() + 1 > 10 then
+	if attacker:Frags() + 1 > 30 then
 		RestartGame()
 	end
 end)
