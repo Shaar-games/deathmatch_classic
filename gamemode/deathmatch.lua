@@ -221,6 +221,8 @@ function DEATHMATCH.GetSpawnPoints()
     local atbl = util.JSONToTable( file.Read( "dm_clasic/spawnpoint/" .. game.GetMap() .. ".dat" , "DATA" ) or "[]" )
     local tbl = {}
     local i = 1
+
+    if atbl == nil then return {} end
     for k,v in pairs(atbl) do
        tbl[i] = v
        i = i + 1
@@ -377,6 +379,9 @@ concommand.Add("dm_restart",function ()
 end)
 
 hook.Add( "PlayerDeath", "dm_clasic_PlayerDeath" , function( victim, inflictor, attacker )
+    if !attacker:IsPlayer() then
+        attacker = attacker:GetOwner()
+    end
 	if attacker:Frags() + 1 > 30 then
 		RestartGame()
 	end
@@ -396,6 +401,9 @@ local dec = 0
 hook.Add( "PlayerSpawn", "dm_clasic_spawn" ,function( ply )
 
     local tbl = DEATHMATCH.GetSpawnPoints()
+
+    if not next( tbl ) then return end
+
     if LastSpawn > table.getn( tbl ) then
         LastSpawn = 1
     end
@@ -456,7 +464,7 @@ local function IsVisibleOnScreen( user , ent )
         mask = MASK_SHOT,
     };
 
-    if (util.TraceLine(trace).Fraction > 0.99 ) then
+    if (util.TraceLine(trace).Fraction == 1 ) then
         return true;
     end
 
@@ -547,6 +555,9 @@ local function BotAttack( ply , cmd , victim )
     cmd:SetViewAngles( (GetHeadPos( victim  ) - ply:GetShootPos()):Angle() + Angle( math.random( -0.0001 , 0.0001 ), math.random( -0.0001 , 0.0001 ) , 0 ) )
     cmd:SetForwardMove( ply:GetRunSpeed() )
     cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
+
+    cmd:SetForwardMove( 0 )
+    cmd:SetSideMove( math.random(  ply:GetRunSpeed()*-1 , ply:GetRunSpeed() ) )
     
     if IsValid( ply:GetActiveWeapon() ) then
 
@@ -701,8 +712,18 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
             BlacklistWeapon[ ply ] = BlacklistWeapon[ ply ] or {}
             BlacklistWeapon[ ply ][table.getn(BlacklistWeapon) + 1] = ent2
         else
+
+            local t
+            if Targets[ ply ] then
+                if Focus[ ply ] < 10 and IsVisibleOnScreen( ply , Targets[ ply ] ) then
+                    t = Targets[ ply ] 
+                end
+            end
+
             WantedWeapon[ ply ] = ent2
-            local t = Targets[ ply ] or ent or ent2
+            if not t then
+                t = ent2
+            end
             cmd:SetViewAngles( ( GetHeadPos( t ) - ply:GetShootPos()):Angle() )
 
             cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_FORWARD ) )
@@ -746,7 +767,9 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
         cmd:SetForwardMove( ply:GetRunSpeed() )
     end
 
-    cmd:SetViewAngles( ply:EyeAngles() )
+    if ply:IsOnGround() and Focus[ ply ] < 2 and ply:GetVelocity():Length() > ply:GetRunSpeed()*1.2 then
+        cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_JUMP ) )
+    end
 
     lastActivity[ ply ] = lastActivity[ ply ] - 1
 
@@ -757,11 +780,16 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
     if Velocity[ ply ] < 1 and ply:GetVelocity():Length() < 1 then
         Velocity[ ply ] = Velocity[ ply ] -1
     end
-    
 
-    if math.random( 0 , 500 ) == 500 then
-        cmd:SetViewAngles( Angle( math.random( -180 , 180 ) , math.random( -180 , 180 ) , 0 ) )
+    if ply:GetEyeTrace().HitPos:Distance( ply:GetShootPos() ) < 100 then
+        cmd:SetViewAngles( Angle(0 , 0 + CurTime()*math.random( 0 , 30 ) , 0) )
+        cmd:SetForwardMove( 0 )
+        return
     end
+    
+    --if math.random( 0 , 500 ) == 500 then
+    --    cmd:SetViewAngles( Angle( math.random( -180 , 180 ) , math.random( -180 , 180 ) , 0 ) )
+    --end
 
     return
 
