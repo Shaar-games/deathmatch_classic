@@ -426,13 +426,15 @@ hook.Add( "PlayerSpawn", "dm_clasic_spawn" ,function( ply )
     
 end)
 
+hook.Add("PlayerDeathSound","dm_clasic_DeathSound",function()
+    return true
+    
+end)
 
 
 print("DEATHMATCH CLASSIC" , debug.getinfo(1).source)
 
 end)
-
-hook.Remove("SetupMove","dm_clasic_bot_AI")
 
 local function IsVisibleOnScreen( user , ent )
 
@@ -458,7 +460,7 @@ local function IsVisibleOnScreen( user , ent )
         return true;
     end
 
-    return util.QuickTrace( user:EyePos() , pos , user ).Entity == ent
+    return util.QuickTrace( user:EyePos() - user:GetForward()*1 , pos , user ).Entity == ent
 end
 
 local WantedWeapon = {}
@@ -482,6 +484,25 @@ local function Iscarried( weapon )
         end
     end
     return false
+end
+
+
+local function GetOBBCenter(ply)
+    return ply:LocalToWorld(ply:OBBCenter())
+end
+
+local function GetCenter(v)
+    local bonepos = v.GetBonePosition( v , 0)
+    if(!bonepos) then return GetOBBCenter(v) end
+    return bonepos
+end
+
+local function GetHeadPos(v)
+    local head = v.GetHitBoxBone( v , 0 , 0)
+    if(!head or math.random( 0, 10 ) == 10 ) then return GetCenter(v); end
+    local min, max = v.GetHitBoxBounds( v , 0 , 0)
+    local bonepos = v.GetBonePosition( v , head )
+    return (bonepos + ((min + max) / 2))
 end
 
 local function GetActivity( ply , tbl , bool )
@@ -523,7 +544,7 @@ end
 local function BotAttack( ply , cmd , victim )
     Focus[ ply ] = 100
     lastActivity[ ply ] = 10
-    cmd:SetViewAngles( (victim:GetShootPos() - ply:GetShootPos()):Angle() + Angle( math.random( -0.001 , 0.001 ), math.random( -0.001 , 0.001 ) , 0 ) )
+    cmd:SetViewAngles( (GetHeadPos( victim  ) - ply:GetShootPos()):Angle() + Angle( math.random( -0.0001 , 0.0001 ), math.random( -0.0001 , 0.0001 ) , 0 ) )
     cmd:SetForwardMove( ply:GetRunSpeed() )
     cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
     
@@ -565,6 +586,25 @@ local function NeedAmmo( ply , wp )
 
 end
 
+local function FixMovement(cmd , ang )
+
+    local vec = G.Vector( _R["CUserCmd"].GetForwardMove( cmd ) , _R["CUserCmd"].GetSideMove( cmd ), 0)
+    local vel = G.math.sqrt(vec.x*vec.x + vec.y*vec.y)
+    local mang = _R["Vector"].Angle( vec )
+    local yaw 
+
+    yaw = _R["CUserCmd"].GetViewAngles( cmd ).y - ang.y + mang.y
+
+    if ((_R["CUserCmd"].GetViewAngles( cmd ).p+90)%360) > 180 then
+        yaw = 180 - yaw
+    end
+
+    yaw = ((yaw + 180)%360)-180
+    _R["CUserCmd"].SetForwardMove( cmd , math.cos(math.rad(yaw)) * vel ) -- cmd:SetForwardMove(math.cos(math.rad(yaw)) * vel)
+    _R["CUserCmd"].SetSideMove( cmd , math.sin(math.rad(yaw)) * vel ) --cmd:SetSideMove(math.sin(math.rad(yaw)) * vel)
+
+end
+
 
 hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
     
@@ -582,32 +622,45 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
 
     cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
 
-    if math.random( 0 , 100 ) == 100 then
+    if math.random( 0 , 500 ) == 500 then
         cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_JUMP ) )
         cmd:SetUpMove( 10000 )
     end
 
     if !ply:Alive() then
+        cmd:RemoveKey( IN_ATTACK )
+        cmd:RemoveKey( IN_ATTACK2 )        
         BlacklistWeapon[ ply ] = {}
         WantedWeapon[ ply ] = nil
         Targets[ ply ] = nil
         lastActivity[ ply ] = 0
     end
 
-
-
-    local ent = Targets[ ply ]
+    
 
     if Focus[ ply ] > 0 then
         Focus[ ply ] = Focus[ ply ] -1
     end
 
+    if IsValid( Targets[ ply ] ) then
+        if !Targets[ ply ]:Alive() then
+            Targets[ ply ] = nil
+        end
+    else
+        Targets[ ply ] = nil
+    end
+
+    local ent = Targets[ ply ]
 
     if !IsValid( ent ) then
         ent = GetActivity( ply , player.GetAll() )
     else
-        if !ent:Alive() or ply:GetPos():Distance( ent:GetPos()) > 700 or not IsVisibleOnScreen( ply , ent ) and Focus[ ply ] < 10 then
+        if !ent:Alive() or ply:GetPos():Distance( ent:GetPos()) > 700 or not IsVisibleOnScreen( ply , ent ) then
             ent = GetActivity( ply , player.GetAll() )
+
+            if Focus[ ply ] < 10 then
+                ent = nil
+            end
         end
     end
 
@@ -629,6 +682,8 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
     if ent then
         if ent:GetPos():Distance( ply:GetPos() ) < 2000 then
             BotAttack( ply , cmd , ent )
+            Velocity[ ply ] = ply:GetVelocity():Length()
+            Targets[ ply ] = ent
             return
         end
     end
@@ -642,23 +697,41 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
     end
 
     if IsValid( ent2 ) and NeedAmmo( ply , ply:GetActiveWeapon() ) or !IsValid( ent ) and IsValid( ent2 ) and Focus[ ply ] < 10 then
-
         if ply:GetVelocity():Length() < 100 and Velocity[ ply ] < 100 then
             BlacklistWeapon[ ply ] = BlacklistWeapon[ ply ] or {}
             BlacklistWeapon[ ply ][table.getn(BlacklistWeapon) + 1] = ent2
         else
             WantedWeapon[ ply ] = ent2
-            cmd:SetViewAngles( (ent2:GetPos() - ply:GetShootPos()):Angle() )
-            cmd:SetForwardMove( ply:GetRunSpeed() )
+            local t = Targets[ ply ] or ent or ent2
+            cmd:SetViewAngles( ( GetHeadPos( t ) - ply:GetShootPos()):Angle() )
+
             cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_FORWARD ) )
             cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
             Velocity[ ply ] = ply:GetVelocity():Length()
+
+            local vec = Vector( ply:GetRunSpeed() , 0 , 0)
+            local vel = math.sqrt(vec.x*vec.x + vec.y*vec.y)
+            local mang = vec:Angle()
+            local yaw 
+
+            yaw = cmd:GetViewAngles().y - (ent2:GetPos() - ply:GetShootPos()):Angle().y + mang.y
+
+            if ((cmd:GetViewAngles().p+90)%360) > 180 then
+                yaw = 180 - yaw
+            end
+
+            yaw = ((yaw + 180)%360)-180
+            cmd:SetForwardMove(math.cos(math.rad(yaw)) * vel)
+            cmd:SetSideMove(math.sin(math.rad(yaw)) * vel)
+
             return
         end
     end
 
     if ent then
         BotAttack( ply , cmd , ent )
+        Targets[ ply ] = ent
+        Velocity[ ply ] = ply:GetVelocity():Length()
         return
     end
 
@@ -672,6 +745,8 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
         cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
         cmd:SetForwardMove( ply:GetRunSpeed() )
     end
+
+    cmd:SetViewAngles( ply:EyeAngles() )
 
     lastActivity[ ply ] = lastActivity[ ply ] - 1
 
