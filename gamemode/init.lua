@@ -31,7 +31,7 @@ AddCSLuaFile( "gui/IconEditor.lua" )
 RunConsoleCommand( "sv_airaccelerate", 1000 )
 RunConsoleCommand( "sv_sticktoground", 0 )
 RunConsoleCommand( "sbox_maxprops", 5 )
-RunConsoleCommand( "sbox_noclip", 0 )
+RunConsoleCommand( "sbox_noclip", 1 ) -- TODO set to 0
 RunConsoleCommand( "sbox_godmode", 0 )
 RunConsoleCommand( "sv_mincmdrate", 66 )
 RunConsoleCommand( "sv_maxcmdrate", 100 )

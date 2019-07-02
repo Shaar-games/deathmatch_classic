@@ -852,7 +852,9 @@ end )
 
 function game.ShowScoreBoard()
 	if game.Limit then
+
 		surface.PlaySound("endtheme" .. math.random( 1 , 2 ) ..".mp3")
+		
 		dm_Scoreboard:hide()
 		dm_Scoreboard:show()
 	else

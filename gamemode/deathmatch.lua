@@ -319,6 +319,10 @@ hook.Add("Think","WeaponSpawnSystem",function()
 end)
 
 hook.Add( "PlayerCanPickupWeapon", "WeaponSpawnSystem", function( ply, wep )
+
+    if ply:IsBot() then
+        ply:SelectWeapon( wep:GetClass() )
+    end
     if ply:GetAmmoCount( wep:GetPrimaryAmmoType() ) < wep:Clip1()/2 then
         ply:GiveAmmo( wep:Clip1()*2 , wep:GetPrimaryAmmoType() , true )
     end
@@ -356,12 +360,7 @@ local function RestartGame()
             DEATHMATCH.Limit = false
         end
     end)
-	
-    timer.Simple( 30 ,function()
-        for k,v in pairs( player.GetAll() ) do
-            v:UnLock()
-        end
-    end)
+
 end
 
 
@@ -413,19 +412,282 @@ hook.Add( "PlayerSpawn", "dm_clasic_spawn" ,function( ply )
         end
     end
 
-  	ply:SetPos( v.pos + v.ang:Forward() * de + Vector( 0 ,0 , 1) )
+  	ply:SetPos( v.pos + v.ang:Forward() * de + Vector( 0 ,0 , de/3) )
   	ply:SetEyeAngles( v.ang )
 
     for i,v in ipairs( DEATHMATCH.OldGetWeapons() ) do
         ply:Give( v )
-        if i >= 2 then break end
+        if i >= 2 then
+            ply:SelectWeapon( i )
+            break 
+        end
     end
+
+    
 end)
 
-hook.Add("PlayerDeathSound","dm_clasic_DeathSound",function()
-    return true
-end)
+
 
 print("DEATHMATCH CLASSIC" , debug.getinfo(1).source)
 
 end)
+
+hook.Remove("SetupMove","dm_clasic_bot_AI")
+
+local function IsVisibleOnScreen( user , ent )
+
+    if ent:GetPos():Distance( user:GetPos() ) < 30 then
+        return true
+    end
+
+    local pos
+
+    if ent:IsPlayer() then
+        pos = ent:LocalToWorld(ent:OBBCenter())
+    else
+        pos = ent:GetPos() + Vector( 0 , 0 , 1)
+    end
+    local trace = {
+        start = user:EyePos(),
+        endpos = pos + Vector( 0 , 0 , 0),
+        filter = {ply , user},
+        mask = MASK_SHOT,
+    };
+
+    if (util.TraceLine(trace).Fraction > 0.99 ) then
+        return true;
+    end
+
+    return util.QuickTrace( user:EyePos() , pos , user ).Entity == ent
+end
+
+local WantedWeapon = {}
+
+local BlacklistWeapon = {}
+
+local Velocity = {}
+
+local Targets = {}
+
+local lastActivity = {}
+
+local Focus = {}
+
+local function Iscarried( weapon )
+    for k,u in pairs(player.GetAll()) do
+        for k,u in pairs(u:GetWeapons() ) do
+            if weapon:EntIndex() == u:EntIndex() then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function GetActivity( ply , tbl , bool )
+
+    local wmin = 10^10
+    local ent
+
+     for k, v in pairs( tbl ) do
+
+        local pos = v:GetPos():Distance( ply:GetPos() )
+
+        if v:IsWeapon() then
+            if not Iscarried( v ) then
+                if wmin > pos and pos != 0 and !table.HasValue( BlacklistWeapon[ ply ] or {} , v ) and IsVisibleOnScreen( ply , v ) then
+                    wmin = pos
+                    ent = v
+                end
+            end
+        end
+        if v:IsPlayer() and not bool then
+            if v:Alive() then
+                if wmin > pos and pos != 0 and IsVisibleOnScreen( ply , v ) then
+                    wmin = pos
+                    ent = v
+                end
+            end
+        end
+        
+
+        if wmin < 100 then
+            ent = v
+            break
+        end
+    end
+
+    return ent
+end
+
+local function BotAttack( ply , cmd , victim )
+    Focus[ ply ] = 100
+    lastActivity[ ply ] = 10
+    cmd:SetViewAngles( (victim:GetShootPos() - ply:GetShootPos()):Angle() + Angle( math.random( -0.001 , 0.001 ), math.random( -0.001 , 0.001 ) , 0 ) )
+    cmd:SetForwardMove( ply:GetRunSpeed() )
+    cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
+    
+    if IsValid( ply:GetActiveWeapon() ) then
+
+        if ply:GetActiveWeapon():GetNextPrimaryFire() < CurTime() then
+            cmd:SetButtons( IN_ATTACK )
+        else
+            cmd:RemoveKey( IN_ATTACK )
+            cmd:RemoveKey( IN_RELOAD )
+        end
+
+        if ply:GetActiveWeapon():GetNextSecondaryFire() < CurTime() and math.random( 0 , 500 ) == 500 then
+            cmd:SetButtons( IN_ATTACK2 )
+        else
+            cmd:RemoveKey( IN_ATTACK2 )
+        end
+
+    end
+end
+
+local function GetAmmo( ply , wp )
+    if ( !IsValid( ply ) ) then return -1 end
+
+    local wep = wp
+    if ( !IsValid( wep ) ) then return -1 end
+    if ply:GetAmmoCount( wep:GetPrimaryAmmoType() ) == -1 then
+        return 1
+    end
+    return ply:GetAmmoCount( wep:GetPrimaryAmmoType() )
+end
+
+local function NeedAmmo( ply , wp )
+    if !IsValid( wp ) then return false end
+
+    if wp:GetNextPrimaryFire() < CurTime() + 1 and wp:Clip1() == 0 then
+        return true
+    end
+
+end
+
+
+hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
+    
+    if not ply:IsBot() then return end
+
+    cmd:ClearMovement()
+    cmd:ClearButtons()
+
+    if not Velocity[ ply ] then
+        Velocity[ ply ] = 600
+        lastActivity[ ply ] = 1
+        BlacklistWeapon[ ply ] = {}
+        Focus[ ply ] = 0
+    end
+
+    cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
+
+    if math.random( 0 , 100 ) == 100 then
+        cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_JUMP ) )
+        cmd:SetUpMove( 10000 )
+    end
+
+    if !ply:Alive() then
+        BlacklistWeapon[ ply ] = {}
+        WantedWeapon[ ply ] = nil
+        Targets[ ply ] = nil
+        lastActivity[ ply ] = 0
+    end
+
+
+
+    local ent = Targets[ ply ]
+
+    if Focus[ ply ] > 0 then
+        Focus[ ply ] = Focus[ ply ] -1
+    end
+
+
+    if !IsValid( ent ) then
+        ent = GetActivity( ply , player.GetAll() )
+    else
+        if !ent:Alive() or ply:GetPos():Distance( ent:GetPos()) > 700 or not IsVisibleOnScreen( ply , ent ) and Focus[ ply ] < 10 then
+            ent = GetActivity( ply , player.GetAll() )
+        end
+    end
+
+    local wp = ply:GetActiveWeapon()
+    for k,v in pairs( ply:GetWeapons() ) do
+        if GetAmmo( ply , v ) >= GetAmmo( ply , wp ) then
+            wp = v
+        end
+    end
+
+    if IsValid( wp ) then
+        cmd:SelectWeapon( wp )    
+    end
+
+    if NeedAmmo( ply , ply:GetActiveWeapon() ) then
+        ent = nil
+    end
+
+    if ent then
+        if ent:GetPos():Distance( ply:GetPos() ) < 2000 then
+            BotAttack( ply , cmd , ent )
+            return
+        end
+    end
+
+    local ent2 = WantedWeapon[ ply ]
+
+    if IsValid( WantedWeapon[ ply ] ) and !table.HasValue( BlacklistWeapon[ ply ] or {} , WantedWeapon[ ply ] ) and !Iscarried( WantedWeapon[ ply ] ) then
+        ent2 = WantedWeapon[ ply ]
+    else
+        ent2 = GetActivity( ply , ents.GetAll() , true )
+    end
+
+    if IsValid( ent2 ) and NeedAmmo( ply , ply:GetActiveWeapon() ) or !IsValid( ent ) and IsValid( ent2 ) and Focus[ ply ] < 10 then
+
+        if ply:GetVelocity():Length() < 100 and Velocity[ ply ] < 100 then
+            BlacklistWeapon[ ply ] = BlacklistWeapon[ ply ] or {}
+            BlacklistWeapon[ ply ][table.getn(BlacklistWeapon) + 1] = ent2
+        else
+            WantedWeapon[ ply ] = ent2
+            cmd:SetViewAngles( (ent2:GetPos() - ply:GetShootPos()):Angle() )
+            cmd:SetForwardMove( ply:GetRunSpeed() )
+            cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_FORWARD ) )
+            cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
+            Velocity[ ply ] = ply:GetVelocity():Length()
+            return
+        end
+    end
+
+    if ent then
+        BotAttack( ply , cmd , ent )
+        return
+    end
+
+    if IsValid( Targets[ ply ] ) then
+        BotAttack( ply , cmd , Targets[ ply ] )
+    end
+    
+
+    if lastActivity[ ply ]  < 0 then
+        cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_FORWARD ) )
+        cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
+        cmd:SetForwardMove( ply:GetRunSpeed() )
+    end
+
+    lastActivity[ ply ] = lastActivity[ ply ] - 1
+
+    if Velocity[ ply ] == -10 and ply:GetVelocity():Length() < 1 and ply:Alive() then
+        ply:KillSilent()
+    end
+    Velocity[ ply ] = ply:GetVelocity():Length()
+    if Velocity[ ply ] < 1 and ply:GetVelocity():Length() < 1 then
+        Velocity[ ply ] = Velocity[ ply ] -1
+    end
+    
+
+    if math.random( 0 , 500 ) == 500 then
+        cmd:SetViewAngles( Angle( math.random( -180 , 180 ) , math.random( -180 , 180 ) , 0 ) )
+    end
+
+    return
+
+end )
