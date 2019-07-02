@@ -1,5 +1,0 @@
-"VertexLitGeneric"
-{
-	// Original shader: BaseTimesLightmap
-	"$basetexture" "models/forklift/gus_arm"
-}
