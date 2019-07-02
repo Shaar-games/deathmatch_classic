@@ -852,6 +852,7 @@ end )
 
 function game.ShowScoreBoard()
 	if game.Limit then
+		surface.PlaySound("endtheme" .. math.random( 1 , 2 ) ..".mp3")
 		dm_Scoreboard:hide()
 		dm_Scoreboard:show()
 	else
@@ -881,4 +882,57 @@ concommand.Add("dm_restart",function ()
 	if not LocalPlayer():IsAdmin() then return end
     net.Start("dm_restart")
     net.SendToServer()
+end)
+
+
+concommand.Add("dm_settings",function ()
+
+	local Panel = vgui.Create( "DFrame" )
+	Panel:SetSize( ScrW()/3, ScrH()/1.5 )
+	Panel:Center()
+	Panel:SetTitle( "Settings" )
+	Panel:SetDraggable( true )
+	Panel:MakePopup()
+
+	Panel.Paint = function( self , w , h)
+		draw.RoundedBox(0 ,0 ,0 ,w  ,h  ,Color(30,30,30,255))
+	end
+
+	local class = vgui.Create( "DPanelList", Panel )
+	class:SetPos( 0 , 50 )
+	class:SetSize( Panel:GetWide() , Panel:GetTall() )
+
+	class.Paint = function( self , w , h)
+		draw.RoundedBox(0 ,0 ,0 ,w  ,h  ,Color(50,50,50,255))
+	end
+
+	local Convars = {}
+
+	Convars[1] = "dm_max_kills"
+	Convars[2] = "dm_max_time"
+	Convars[3] = "dm_min_players"
+	Convars[4] = "dm_min_players"
+	Convars[4] = "dm_restart_time"
+
+	for k,v in pairs(  Convars ) do
+		local x = vgui.Create("Panel" )
+		local u = vgui.Create( "DLabel" , x)
+		u:SetPos( 0 , 0 )
+		u:SetText( v or "" )
+		u:SetContentAlignment( 5 )
+		u:SetSize( x:GetWide()*5 , x:GetTall() )
+
+		u.Paint = function( self , w , h)
+			draw.RoundedBox(0 ,0 ,0 ,w  ,h  ,Color(30,30,30,255))
+		end
+		local i = vgui.Create( "DTextEntry" , x)
+		i:SetPos( x:GetWide()*5 , 0 )
+		i:SetSize( x:GetWide()*5 , x:GetTall() )
+		i:SetText( GetConVarNumber( v ) )
+		i:SetContentAlignment( 5 )
+		class:AddItem( x )
+	end
+
+	class:EnableVerticalScrollbar()
+
 end)

@@ -21,6 +21,25 @@ util.AddNetworkString("dm_weaponspawn")
 
 util.AddNetworkString("dm_restart")
 
+resource.AddWorkshop("1416249216")
+
+RunConsoleCommand("hl1_sk_plr_dmg_crowbar","30")
+RunConsoleCommand("hl1_sk_plr_dmg_9mm_bullet","24")
+RunConsoleCommand("hl1_sk_plr_dmg_357_bullet","80")
+RunConsoleCommand("hl1_sk_plr_dmg_buckshot","15")
+RunConsoleCommand("hl1_sk_plr_dmg_mp5_bullet","15")
+RunConsoleCommand("hl1_sk_plr_dmg_mp5_grenade","100")
+RunConsoleCommand("hl1_sk_plr_dmg_rpg","100")
+RunConsoleCommand("hl1_sk_plr_dmg_xbow_bolt_plr","30")
+RunConsoleCommand("hl1_sk_plr_dmg_xbow_bolt_npc","100")
+RunConsoleCommand("hl1_sk_plr_dmg_egon_wide","28")
+RunConsoleCommand("hl1_sk_plr_dmg_gauss","40")
+RunConsoleCommand("hl1_sk_plr_dmg_grenade","100")
+RunConsoleCommand("hl1_sk_plr_dmg_hornet","21")
+RunConsoleCommand("hl1_sk_plr_dmg_tripmine","150")
+RunConsoleCommand("hl1_sk_plr_dmg_satchel","150")
+
+
 DEATHMATCH.WeaponConfig = {}
 
 local HL = {}
@@ -308,6 +327,7 @@ end )
 
 local function RestartGame()
 
+    if DEATHMATCH.Limit == true then return end 
 	GetWeaponSpawn = DEATHMATCH.GetWeaponSpawn()
     GetWeapons = DEATHMATCH.GetWeapons()
 
@@ -321,7 +341,7 @@ local function RestartGame()
         BroadcastLua( [[ game.Limit = true game.ShowScoreBoard() ]] )
     end)
    	
-    timer.Simple( 29 ,function()
+    timer.Simple( 60 ,function()
         BroadcastLua( [[ game.Limit = false game.ShowScoreBoard() ]] )
         RunConsoleCommand("gmod_admin_cleanup")
     
@@ -392,7 +412,7 @@ hook.Add( "PlayerSpawn", "dm_clasic_spawn" ,function( ply )
             break
         end
     end
-    print( de )
+
   	ply:SetPos( v.pos + v.ang:Forward() * de + Vector( 0 ,0 , 1) )
   	ply:SetEyeAngles( v.ang )
 
@@ -409,5 +429,3 @@ end)
 print("DEATHMATCH CLASSIC" , debug.getinfo(1).source)
 
 end)
-
-print( os.time() )
