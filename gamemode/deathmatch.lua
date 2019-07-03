@@ -382,6 +382,7 @@ hook.Add( "PlayerDeath", "dm_clasic_PlayerDeath" , function( victim, inflictor, 
     if !attacker:IsPlayer() then
         attacker = attacker:GetOwner()
     end
+    if not attacker:IsPlayer() then return end
 	if attacker:Frags() + 1 > 30 then
 		RestartGame()
 	end
@@ -449,6 +450,26 @@ local function PredictPos(pos , vel )
     return pos
 end
 
+
+local function GetOBBCenter(ply)
+    return ply:LocalToWorld(ply:OBBCenter())
+end
+
+local function GetCenter(v)
+    local bonepos = v.GetBonePosition( v , 0)
+    if(!bonepos) then return GetOBBCenter(v) end
+    return bonepos
+end
+
+local function GetHeadPos(v)
+    local head = v.GetHitBoxBone( v , 0 , 0)
+    if(!head or math.random( 0, 10 ) == 10 ) then return GetCenter(v); end
+    local min, max = v.GetHitBoxBounds( v , 0 , 0)
+    local bonepos = v.GetBonePosition( v , head )
+    return (bonepos + ((min + max) / 2))
+end
+
+
 local function IsVisibleOnScreen( user , ent )
 
     if ent:GetPos():Distance( user:GetPos() ) < 30 then
@@ -458,22 +479,20 @@ local function IsVisibleOnScreen( user , ent )
     local pos
 
     if ent:IsPlayer() then
-        pos = PredictPos( ent:LocalToWorld(ent:OBBCenter()) , user:GetVelocity() ) 
+        pos = GetHeadPos(ent) --PredictPos( ent:LocalToWorld(ent:OBBCenter()) , user:GetVelocity() ) 
     else
         pos = ent:GetPos() + Vector( 0 , 0 , 1)
     end
-    local trace = {
-        start = user:GetShootPos(),
-        endpos = pos + Vector( 0 , 0 , 0),
-        filter = {ply , user},
-        mask = MASK_SHOT,
-    };
 
-    if (util.TraceLine(trace).Fraction > 0.8 ) then
-        return true;
-    end
-    --print( util.QuickTrace( user:EyePos() - user:GetForward()*1 , pos , user ).HitPos:Distance( ent:GetPos() ) )
-    return false
+    local tr = util.TraceLine( {
+        start = user:GetShootPos(),
+        endpos = pos,
+    } )
+
+
+
+    return tr.Entity == ent
+
 end
 
 local WantedWeapon = {}
@@ -499,24 +518,6 @@ local function Iscarried( weapon )
     return false
 end
 
-
-local function GetOBBCenter(ply)
-    return ply:LocalToWorld(ply:OBBCenter())
-end
-
-local function GetCenter(v)
-    local bonepos = v.GetBonePosition( v , 0)
-    if(!bonepos) then return GetOBBCenter(v) end
-    return bonepos
-end
-
-local function GetHeadPos(v)
-    local head = v.GetHitBoxBone( v , 0 , 0)
-    if(!head or math.random( 0, 10 ) == 10 ) then return GetCenter(v); end
-    local min, max = v.GetHitBoxBounds( v , 0 , 0)
-    local bonepos = v.GetBonePosition( v , head )
-    return (bonepos + ((min + max) / 2))
-end
 
 local listBots = {}
 
@@ -578,6 +579,7 @@ local function GetActivity( ply , tbl , bool )
 end
 
 local function BotAttack( ply , cmd , victim )
+
     Focus[ ply ] = 500
     lastActivity[ ply ] = 10
     ply:SetEyeAngles((GetHeadPos( victim  ) - ply:GetShootPos()):Angle() + Angle( math.random( -0.0001 , 0.0001 ), math.random( -0.0001 , 0.0001 ) , 0 ) )
@@ -590,7 +592,7 @@ local function BotAttack( ply , cmd , victim )
     
     if IsValid( ply:GetActiveWeapon() ) then
 
-        if ply:GetActiveWeapon():GetNextPrimaryFire() < CurTime() + 0.01 then
+        if ply:GetActiveWeapon():GetNextPrimaryFire() < CurTime() + 0.05 then
             cmd:SetButtons( IN_ATTACK )
         else
             cmd:RemoveKey( IN_ATTACK )
@@ -624,8 +626,12 @@ end
 local function NeedAmmo( ply , wp )
     if !IsValid( wp ) then return false end
 
-    if  wp:Clip1() == 0 then --ply:GetAmmoCount( wp:GetPrimaryAmmoType() ) < wp:Clip1() and
+    if  wp:Clip1() == 0 then
         return true
+    end
+
+    if  wp:Clip1() == -1 then
+        return ply:GetAmmoCount( wp:GetPrimaryAmmoType() ) < 0
     end
 
 end
@@ -707,13 +713,13 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
     if !IsValid( ent ) then
         ent = GetActivity( ply , player.GetAll() )
     else
-        if !ent:Alive() or ply:GetPos():Distance( ent:GetPos()) > 700 or not IsVisibleOnScreen( ply , ent ) and ply:GetPos():Distance( ent:GetPos()) > 500 then
+        if !ent:Alive() or ply:GetPos():Distance( ent:GetPos()) > 700 or not IsVisibleOnScreen( ply , ent ) then
             ent = GetActivity( ply , player.GetAll() )
-
-            if Focus[ ply ] < 10 then
-                ent = nil
-            end
         end
+    end
+
+    if Focus[ ply ] > 10 or NeedAmmo( ply , wp ) then
+        ent = nil
     end
 
     local wp = ply:GetActiveWeapon()
@@ -727,12 +733,15 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
         cmd:SelectWeapon( wp )    
     end
 
-    if ent and not NeedAmmo( ply , wp ) then
+    if ent then
         if ent:GetPos():Distance( ply:GetPos() ) < 2000 then
-            BotAttack( ply , cmd , ent )
-            Velocity[ ply ] = ply:GetVelocity():Length()
+            if not NeedAmmo( ply , wp ) then
+                BotAttack( ply , cmd , ent )
+                Velocity[ ply ] = ply:GetVelocity():Length()
+                Targets[ ply ] = ent
+                return
+            end
             Targets[ ply ] = ent
-            return
         end
     end
 
@@ -762,7 +771,9 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
                 t = ent2
             end
             --cmd:SetViewAngles( ( GetHeadPos( t ) - ply:GetShootPos()):Angle() )
+
             ply:SetEyeAngles( ( GetHeadPos( t ) - ply:GetShootPos()):Angle() )
+
             cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_FORWARD ) )
             cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_SPEED ) )
             Velocity[ ply ] = ply:GetVelocity():Length()
@@ -772,7 +783,7 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
             local mang = vec:Angle()
             local yaw 
 
-            yaw = cmd:GetViewAngles().y - (ent2:GetPos() - ply:GetShootPos()):Angle().y + mang.y
+            yaw = ply:EyeAngles().y - (ent2:GetPos() - ply:GetShootPos()):Angle().y + mang.y
 
             if ((cmd:GetViewAngles().p+90)%360) > 180 then
                 yaw = 180 - yaw
@@ -804,10 +815,6 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
         cmd:SetForwardMove( ply:GetRunSpeed() )
     end
 
-    if ply:IsOnGround() and Focus[ ply ] < 2 and ply:GetVelocity():Length() > ply:GetRunSpeed() then
-        cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_JUMP ) )
-    end
-
     lastActivity[ ply ] = lastActivity[ ply ] - 1
 
     if Velocity[ ply ] == -10 and ply:GetVelocity():Length() < 10 and ply:Alive() then
@@ -819,15 +826,17 @@ hook.Add( "StartCommand", "dm_clasic_bot_AI", function( ply, cmd )
     end
 
     if ply:GetEyeTrace().HitPos:Distance( ply:GetShootPos() ) < 50 and Focus[ ply ] < 1 then
-        Focus[ ply ] = 100
+        Focus[ ply ] = 200
         cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_JUMP ) )
+        cmd:SetSideMove( math.random( - 5, 5 ))
         cmd:SetButtons(bit.bor( cmd:GetButtons() , IN_FORWARD ) )
         --cmd:SetViewAngles( Angle(0 , 0 + CurTime()*math.random( 0 , 30 ) , 0) )
         ply:SetEyeAngles( Angle(0 , 0 + CurTime()*math.random( 0 , 30 ) , 0) )
         return
     end
 
-    if ply:GetVelocity():Length() < 50 then
+    if ply:GetVelocity():Length() < 3 and  Focus[ ply ] < 1 then
+        Focus[ ply ] = 200
         ply:SetEyeAngles( Angle( 0 , math.random( -180 , 180 ) , 0 ) )
         return
     end
